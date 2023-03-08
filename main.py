@@ -53,7 +53,7 @@ The `start-game` command lets you play a game through Discord against any desire
 
 
 @bot.command(name='mm')
-async def make_move(ctx: commands.Context, *args):
+async def make_move(ctx: commands.Context, *args: str):
     author = ctx.message.author
     if len(args) != 1:
         return await ctx.send('''\
@@ -79,11 +79,20 @@ The `mm` command lets you make a move (when it is your turn) in a chess game you
         return await ctx.send(f'Sorry {author.mention}, _{move_san}_ is invalid SAN.')
     except Exception:
         return await ctx.send(f'Sorry {author.mention}, an error occured while trying to make your move.')
+    if board.is_checkmate():
+        return await win(ctx, author, players[not players.index(
+            author)], 'checkmate', game_index)
+    elif board.is_stalemate():
+        return await draw(ctx, 'stalemate', game_index)
+    elif board.is_fivefold_repetition():
+        return await draw(ctx, 'fivefold repetition', game_index)
+    elif board.is_seventyfive_moves():
+        return await draw(ctx, 'the seventy-five-move rule', game_index)
     await request_move(ctx, game_index)
 
 
 @bot.command()
-async def resign(ctx: commands.Context, *args):
+async def resign(ctx: commands.Context, *args: str):
     author = ctx.message.author
     if len(args) != 0:
         return await ctx.send('''\
@@ -94,17 +103,13 @@ The `resign` command lets you withdraw from the chess game you are currently in,
 ''')
     if (game_index := find_game_index_with_user(author)) is None:
         return await ctx.send(f'Sorry {author.mention}, you must be in a game in order to resign.')
-    players: tuple[discord.User | discord.Member]
-    game = games[game_index]
-    players = game[0]
-    winner = players[not players.index(author)]
-    pgn = make_pgn(game, result='1-0' if players[0] == winner else '0-1')
-    games.pop(game_index)
-    await ctx.send(f'{winner.mention} wins against {author.mention} by resignation!\n\n```\n{pgn}\n```')
+    players = games[game_index][0]
+    await win(ctx, players[not players.index(author)],
+              author, 'resignation', game_index)
 
 
 @bot.command(name='claim-draw')
-async def claim_draw(ctx: commands.Context, *args):
+async def claim_draw(ctx: commands.Context, *args: str):
     author = ctx.message.author
     if len(args) != 0:
         return await ctx.send('''\
@@ -122,9 +127,9 @@ The `claim-draw` command lets you claim a draw during a game, if threefold repet
     opponent = players[not players.index(author)]
     if not board.can_claim_draw():
         return await ctx.send(f'Sorry {author.mention}, your game against {opponent.name} is not applicable for a draw claim.')
-    pgn = make_pgn(game, result='1/2-1/2')
-    games.pop(game_index)
-    await ctx.send(f'Game between {author.mention} and {opponent.mention} drawn by %s!\n\n```\n{pgn}\n```' % 'threefold repetition' if board.can_claim_threefold_repetition() else 'the fifty-move rule')
+    if board.can_claim_threefold_repetition():
+        return await draw(ctx, 'threefold repetition', game_index)
+    await draw(ctx, 'the fifty-move rule', game_index)
 
 
 async def request_move(ctx: commands.Context, game_index: int):
@@ -139,6 +144,22 @@ async def request_move(ctx: commands.Context, game_index: int):
     png_buffer.seek(0)
     png_file = discord.File(png_buffer, 'board_state.png')
     await ctx.send(f"{white.mention if board.turn else white.name} vs. {black.name if board.turn else black.mention}\n{players[not board.turn].name}'s turn!", file=png_file)
+
+
+async def win(ctx: commands.Context, winner: discord.User | discord.Member, loser: discord.User | discord.Member, reason: str, game_index: int):
+    game = games[game_index]
+    players: tuple[discord.User | discord.Member] = game[0]
+    pgn = make_pgn(game, result='1-0' if players[0] == winner else '0-1')
+    games.pop(game_index)
+    await ctx.send(f'{winner.mention} wins against {loser.mention} by {reason}!\n\n```\n{pgn}\n```')
+
+
+async def draw(ctx: commands.Context, reason: str, game_index: int):
+    game = games[game_index]
+    players: tuple[discord.User | discord.Member] = game[0]
+    pgn = make_pgn(game, result='1/2-1/2')
+    games.pop(game_index)
+    await ctx.send(f'Game between {players[0].mention} and {players[1].mention} drawn by {reason}!\n\n```\n{pgn}\n```')
 
 
 def find_game_index_with_user(user: discord.User | discord.Member):

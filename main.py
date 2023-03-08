@@ -138,7 +138,7 @@ async def request_move(ctx: commands.Context, game_index: int):
     players, board = games[game_index]
     white, black = players
     svg_raw = chess.svg.board(board, lastmove=board.move_stack[-1] if len(board.move_stack) else None, size=256, colors={
-                              'square light': '#eeedd5', 'square dark': '#7c945d', 'square dark lastmove': '#bdc959', 'square light lastmove': '#f6f595'})
+                              'square light': '#eeedd5', 'square dark': '#7c945d', 'square dark lastmove': '#bdc959', 'square light lastmove': '#f6f595'}, flipped=not board.turn)
     png_buffer = BytesIO()
     svg2png(bytestring=svg_raw, write_to=png_buffer, scale=2)
     png_buffer.seek(0)
